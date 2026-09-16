@@ -3,6 +3,7 @@ import { buildTree } from "@/lib/tree/buildTree";
 import { collectInitialValues } from "@/lib/tree/types";
 import type { OrgNode } from "@/lib/schema/orgNode";
 import { aggregateTree } from "./aggregateTree";
+import { applyPatchToAggregates } from "./incremental";
 import { weightedPerformance } from "./types";
 
 const now = "2026-01-01T00:00:00.000Z";
@@ -67,5 +68,29 @@ describe("aggregateTree", () => {
     const aggregates = aggregateTree(tree.roots, values);
 
     expect(weightedPerformance(aggregates.get("empty-div")!, 42)).toBe(42);
+  });
+
+  it("incrementally patches only the affected node and its ancestors, matching a full recompute", () => {
+    const tree = buildTree(sampleNodes);
+    const initialValues = collectInitialValues(sampleNodes);
+    const before = aggregateTree(tree.roots, initialValues);
+
+    const patchedValues = new Map(initialValues);
+    patchedValues.set("team-a", { headcount: 14, budget: 2_500, performance: 70, updatedAt: now });
+
+    const incremental = applyPatchToAggregates(
+      tree,
+      before,
+      "team-a",
+      initialValues.get("team-a")!,
+      patchedValues.get("team-a")!,
+    );
+    const fromScratch = aggregateTree(tree.roots, patchedValues);
+
+    for (const id of ["team-a", "dept", "div"]) {
+      expect(incremental.get(id)).toEqual(fromScratch.get(id));
+    }
+    // team-b was untouched by the patch, so its (unrelated sibling) aggregate is unchanged.
+    expect(incremental.get("team-b")).toEqual(before.get("team-b"));
   });
 });

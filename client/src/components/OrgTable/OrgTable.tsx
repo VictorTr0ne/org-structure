@@ -1,4 +1,4 @@
-import { useState, type ReactElement } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactElement } from "react";
 import type { TreeNode, ValuesById } from "@/lib/tree/types";
 import type { SubtreeAggregate } from "@/lib/aggregation/types";
 import { getPerformanceLevel } from "@/lib/format/performanceLevel";
@@ -22,6 +22,7 @@ export interface OrgTableProps {
   roots: TreeNode[];
   valuesById: ValuesById;
   aggregates: Map<string, SubtreeAggregate>;
+  fadingFields: Map<string, Set<string>>;
   selectedId: string | null;
   onSelectNode: (id: string) => void;
 }
@@ -38,13 +39,24 @@ export function OrgTable({
   roots,
   valuesById,
   aggregates,
+  fadingFields,
   selectedId,
   onSelectNode,
 }: OrgTableProps): ReactElement {
   const [searchQuery, setSearchQuery] = useState("");
   const [sort, setSort] = useState<SortState>({ column: "name", direction: "asc" });
+  const [focusedIndex, setFocusedIndex] = useState(0);
+  const rowRefs = useRef<Array<HTMLTableRowElement | null>>([]);
 
   const { rows } = useTableRows(roots, valuesById, aggregates, searchQuery, sort);
+
+  useEffect(() => {
+    setFocusedIndex((index) => Math.min(index, Math.max(0, rows.length - 1)));
+  }, [rows.length]);
+
+  useEffect(() => {
+    rowRefs.current[focusedIndex]?.focus();
+  }, [focusedIndex]);
 
   const handleHeaderClick = (column: SortColumn) => setSort({ column, direction: "asc" });
   const handleHeaderDoubleClick = (column: SortColumn) =>
@@ -53,6 +65,35 @@ export function OrgTable({
         ? { column, direction: previous.direction === "asc" ? "desc" : "asc" }
         : { column, direction: "desc" },
     );
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLTableSectionElement>) => {
+    if (rows.length === 0) return;
+    switch (event.key) {
+      case "ArrowDown":
+        event.preventDefault();
+        setFocusedIndex((index) => Math.min(rows.length - 1, index + 1));
+        break;
+      case "ArrowUp":
+        event.preventDefault();
+        setFocusedIndex((index) => Math.max(0, index - 1));
+        break;
+      case "Home":
+        event.preventDefault();
+        setFocusedIndex(0);
+        break;
+      case "End":
+        event.preventDefault();
+        setFocusedIndex(rows.length - 1);
+        break;
+      case "Enter": {
+        const row = rows[focusedIndex];
+        if (row) onSelectNode(row.id);
+        break;
+      }
+      default:
+        break;
+    }
+  };
 
   return (
     <div>
@@ -84,25 +125,37 @@ export function OrgTable({
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody onKeyDown={handleKeyDown}>
             {rows.length === 0 && (
               <EmptyRow>
                 <td colSpan={COLUMNS.length}>Ничего не найдено</td>
               </EmptyRow>
             )}
-            {rows.map((row) => (
-              <BodyRow key={row.id} $selected={row.id === selectedId} onClick={() => onSelectNode(row.id)}>
-                <BodyCell $indent={row.depth}>{row.name}</BodyCell>
-                <BodyCell>{getLevelLabel(row.depth)}</BodyCell>
-                <BodyCell>{row.totalHeadcount}</BodyCell>
-                <BodyCell>{formatCurrency(row.totalBudget)}</BodyCell>
-                <BodyCell>
-                  <PerformanceBadge $level={getPerformanceLevel(row.weightedPerformance)}>
-                    {row.weightedPerformance.toFixed(1)}
-                  </PerformanceBadge>
-                </BodyCell>
-              </BodyRow>
-            ))}
+            {rows.map((row, index) => {
+              const fading = fadingFields.get(row.id);
+              return (
+                <BodyRow
+                  key={row.id}
+                  ref={(element) => {
+                    rowRefs.current[index] = element;
+                  }}
+                  $selected={row.id === selectedId}
+                  tabIndex={index === focusedIndex ? 0 : -1}
+                  onClick={() => onSelectNode(row.id)}
+                  onFocus={() => setFocusedIndex(index)}
+                >
+                  <BodyCell $indent={row.depth}>{row.name}</BodyCell>
+                  <BodyCell>{getLevelLabel(row.depth)}</BodyCell>
+                  <BodyCell $fading={fading?.has("headcount")}>{row.totalHeadcount}</BodyCell>
+                  <BodyCell $fading={fading?.has("budget")}>{formatCurrency(row.totalBudget)}</BodyCell>
+                  <BodyCell $fading={fading?.has("performance")}>
+                    <PerformanceBadge $level={getPerformanceLevel(row.weightedPerformance)}>
+                      {row.weightedPerformance.toFixed(1)}
+                    </PerformanceBadge>
+                  </BodyCell>
+                </BodyRow>
+              );
+            })}
           </tbody>
         </StyledTable>
       </TableScrollArea>
