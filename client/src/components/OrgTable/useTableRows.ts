@@ -2,6 +2,11 @@ import { useMemo } from "react";
 import { flattenTree } from "@/lib/tree/flatten";
 import type { TreeNode, ValuesById } from "@/lib/tree/types";
 import { weightedPerformance, type SubtreeAggregate } from "@/lib/aggregation/types";
+import {
+  matchesStructuredFilter,
+  parseNaturalLanguageQuery,
+  type StructuredFilter,
+} from "@/lib/aiSearch/parseQuery";
 import { useDebouncedValue } from "@/lib/format/useDebouncedValue";
 import type { SortColumn, SortState, TableRow } from "./types";
 
@@ -49,6 +54,7 @@ function compareRows(a: TableRow, b: TableRow, column: SortColumn): number {
 
 export interface UseTableRowsResult {
   rows: TableRow[];
+  recognizedFilter: StructuredFilter | null;
 }
 
 export function useTableRows(
@@ -62,16 +68,35 @@ export function useTableRows(
 
   const allRows = useMemo(() => buildRows(roots, valuesById, aggregates), [roots, valuesById, aggregates]);
 
+  const recognizedFilter = useMemo(
+    () => parseNaturalLanguageQuery(debouncedQuery),
+    [debouncedQuery],
+  );
+
   const filteredRows = useMemo(() => {
-    const needle = debouncedQuery.trim().toLowerCase();
-    if (!needle) return allRows;
+    const trimmed = debouncedQuery.trim();
+    if (!trimmed) return allRows;
+    if (recognizedFilter) {
+      return allRows.filter((row) =>
+        matchesStructuredFilter(
+          {
+            depth: row.depth,
+            headcount: row.totalHeadcount,
+            budget: row.totalBudget,
+            performance: row.weightedPerformance,
+          },
+          recognizedFilter,
+        ),
+      );
+    }
+    const needle = trimmed.toLowerCase();
     return allRows.filter((row) => matchesPlainText(row, needle));
-  }, [allRows, debouncedQuery]);
+  }, [allRows, debouncedQuery, recognizedFilter]);
 
   const sortedRows = useMemo(() => {
     const factor = sort.direction === "asc" ? 1 : -1;
     return [...filteredRows].sort((a, b) => factor * compareRows(a, b, sort.column));
   }, [filteredRows, sort]);
 
-  return { rows: sortedRows };
+  return { rows: sortedRows, recognizedFilter };
 }

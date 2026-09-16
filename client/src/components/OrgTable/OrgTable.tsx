@@ -10,6 +10,7 @@ import {
   BodyCell,
   BodyRow,
   EmptyRow,
+  FilterHint,
   HeaderCell,
   PerformanceBadge,
   SearchInput,
@@ -35,6 +36,24 @@ const COLUMNS: Array<{ key: SortColumn; label: string }> = [
   { key: "weightedPerformance", label: "Средняя эффективность" },
 ];
 
+const OP_LABEL: Record<"gt" | "gte" | "lt" | "lte", string> = {
+  gt: "больше",
+  gte: "не менее",
+  lt: "меньше",
+  lte: "не более",
+};
+
+function describeFilter(filter: ReturnType<typeof useTableRows>["recognizedFilter"]): string {
+  if (!filter) return "";
+  const parts: string[] = [];
+  if (filter.level) parts.push(getLevelLabel(filter.level));
+  if (filter.headcount) parts.push(`сотрудники ${OP_LABEL[filter.headcount.op]} ${filter.headcount.value}`);
+  if (filter.budget) parts.push(`бюджет ${OP_LABEL[filter.budget.op]} ${formatCurrency(filter.budget.value)}`);
+  if (filter.performance)
+    parts.push(`эффективность ${OP_LABEL[filter.performance.op]} ${filter.performance.value}`);
+  return `Распознан фильтр: ${parts.join(", ")}`;
+}
+
 export function OrgTable({
   roots,
   valuesById,
@@ -48,7 +67,7 @@ export function OrgTable({
   const [focusedIndex, setFocusedIndex] = useState(0);
   const rowRefs = useRef<Array<HTMLTableRowElement | null>>([]);
 
-  const { rows } = useTableRows(roots, valuesById, aggregates, searchQuery, sort);
+  const { rows, recognizedFilter } = useTableRows(roots, valuesById, aggregates, searchQuery, sort);
 
   useEffect(() => {
     setFocusedIndex((index) => Math.min(index, Math.max(0, rows.length - 1)));
@@ -100,11 +119,12 @@ export function OrgTable({
       <TableToolbar>
         <SearchInput
           type="search"
-          placeholder="Поиск по названию…"
+          placeholder="Поиск: название или запрос на естественном языке…"
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
           aria-label="Поиск по таблице"
         />
+        {recognizedFilter && <FilterHint>{describeFilter(recognizedFilter)}</FilterHint>}
       </TableToolbar>
       <TableScrollArea>
         <StyledTable>
