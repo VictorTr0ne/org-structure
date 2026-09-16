@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+*.log
+.DS_Store
+
+# Local machine workaround for a corporate TLS-intercepting proxy — not part of the deliverable.
+.npmrc
+.combined-ca-bundle.pem
+
+.env
+!.env.example
+
+client/node_modules/.tmp/
