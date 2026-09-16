@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 import { useOrgTreeQuery } from "@/lib/query/useOrgTreeQuery";
-import { buildTree } from "@/lib/tree/buildTree";
+import { buildTree, getAncestorIds } from "@/lib/tree/buildTree";
 import { collectInitialValues, type OrgTreeIndex, type ValuesById } from "@/lib/tree/types";
+import { aggregateTree } from "@/lib/aggregation/aggregateTree";
+import type { SubtreeAggregate } from "@/lib/aggregation/types";
 import { OrgTreeValidationError } from "@/lib/schema/orgNode";
 import { EmptyState, ErrorState, LoadingState } from "@/components/StatusView/StatusView";
+import { ViewSwitcher, type DashboardView } from "@/components/ViewSwitcher/ViewSwitcher";
 import { OrgTree } from "@/components/OrgTree/OrgTree";
-import { Content, Page, Pane, PaneTitle } from "./styles";
+import { OrgTable } from "@/components/OrgTable/OrgTable";
+import { Content, Layout, Page, Pane, PaneTitle, Toolbar } from "./styles";
 
 function errorMessage(error: unknown): string {
   if (error instanceof OrgTreeValidationError) {
@@ -20,15 +24,19 @@ export function Dashboard(): ReactElement {
 
   const treeRef = useRef<OrgTreeIndex | null>(null);
   const [values, setValues] = useState<ValuesById | null>(null);
+  const [aggregates, setAggregates] = useState<Map<string, SubtreeAggregate> | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [view, setView] = useState<DashboardView>("tree");
 
-  // Hydrate the static tree shape + initial values exactly once, on first successful load.
+  // Hydrate the static tree shape + initial values/aggregates exactly once, on first successful load.
   useEffect(() => {
     if (query.data && !treeRef.current) {
       const tree = buildTree(query.data);
       treeRef.current = tree;
-      setValues(collectInitialValues(query.data));
-      // Second level (divisions' children) open by default => expand every root.
+      const initialValues = collectInitialValues(query.data);
+      setValues(initialValues);
+      setAggregates(aggregateTree(tree.roots, initialValues));
       setExpandedIds(new Set(tree.roots.map((root) => root.id)));
     }
   }, [query.data]);
@@ -45,7 +53,22 @@ export function Dashboard(): ReactElement {
     });
   }, []);
 
-  if (!values && query.status === "loading") {
+  const handleSelectNode = useCallback((id: string) => {
+    setSelectedId(id);
+    const tree = treeRef.current;
+    if (!tree) return;
+    const ancestors = getAncestorIds(tree.byId, id);
+    if (ancestors.length === 0) return;
+    setExpandedIds((previous) => {
+      const next = new Set(previous);
+      ancestors.forEach((ancestorId) => next.add(ancestorId));
+      return next;
+    });
+  }, []);
+
+  const isFirstLoad = !values;
+
+  if (isFirstLoad && query.status === "loading") {
     return (
       <Page>
         <Content>
@@ -55,7 +78,7 @@ export function Dashboard(): ReactElement {
     );
   }
 
-  if (!values && query.status === "error") {
+  if (isFirstLoad && query.status === "error") {
     return (
       <Page>
         <Content>
@@ -65,7 +88,7 @@ export function Dashboard(): ReactElement {
     );
   }
 
-  if (!values || !treeRef.current) {
+  if (!values || !aggregates || !treeRef.current) {
     return (
       <Page>
         <Content>
@@ -88,17 +111,32 @@ export function Dashboard(): ReactElement {
   return (
     <Page>
       <Content>
-        <Pane>
-          <PaneTitle>Дерево</PaneTitle>
-          <OrgTree
-            roots={treeRef.current.roots}
-            valuesById={values}
-            expandedIds={expandedIds}
-            selectedId={null}
-            onToggleExpand={handleToggleExpand}
-            onSelectNode={() => {}}
-          />
-        </Pane>
+        <Toolbar>
+          <ViewSwitcher view={view} onChange={setView} />
+        </Toolbar>
+        <Layout $view={view}>
+          <Pane className="pane-tree">
+            <PaneTitle>Дерево</PaneTitle>
+            <OrgTree
+              roots={treeRef.current.roots}
+              valuesById={values}
+              expandedIds={expandedIds}
+              selectedId={selectedId}
+              onToggleExpand={handleToggleExpand}
+              onSelectNode={handleSelectNode}
+            />
+          </Pane>
+          <Pane className="pane-table">
+            <PaneTitle>Таблица</PaneTitle>
+            <OrgTable
+              roots={treeRef.current.roots}
+              valuesById={values}
+              aggregates={aggregates}
+              selectedId={selectedId}
+              onSelectNode={handleSelectNode}
+            />
+          </Pane>
+        </Layout>
       </Content>
     </Page>
   );
