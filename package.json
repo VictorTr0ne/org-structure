@@ -2,15 +2,21 @@
   "name": "org-dashboard",
   "private": true,
   "version": "0.0.0",
+  "engines": {
+    "node": ">=20.19.0 || >=22.12.0"
+  },
   "workspaces": [
     "client",
     "server"
   ],
   "scripts": {
+    "predev": "node scripts/check-node.mjs",
     "dev": "npm run dev --workspace server & npm run dev --workspace client & wait",
     "dev:client": "npm run dev --workspace client",
     "dev:server": "npm run dev --workspace server",
+    "prebuild": "node scripts/check-node.mjs",
     "build": "npm run build --workspace client",
+    "pretest": "node scripts/check-node.mjs",
     "test": "npm run test --workspace client",
     "lint": "npm run lint --workspace client"
   }
