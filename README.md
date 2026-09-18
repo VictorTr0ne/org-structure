@@ -5,6 +5,19 @@
 показателями, живыми обновлениями по WebSocket и поиском на естественном
 языке.
 
+## Скриншоты
+
+| | |
+|---|---|
+| Дерево | Таблица |
+| ![Дерево](docs/screenshots/01-tree-view.png) | ![Таблица](docs/screenshots/02-table-view.png) |
+| Split-view (≥1280px) | AI-поиск с распознанным фильтром |
+| ![Split-view](docs/screenshots/03-split-view.png) | ![AI-поиск](docs/screenshots/04-ai-search.png) |
+| Сортировка + выбор строки → раскрытие в дереве | Live-патч по WebSocket (без рефетча) |
+| ![Сортировка и выбор](docs/screenshots/05-sorted-and-selected.png) | ![Live-обновление](docs/screenshots/06-live-update.png) |
+| Состояние ошибки | |
+| ![Ошибка](docs/screenshots/07-error-state.png) | |
+
 ## Стек
 
 - **Клиент**: React 19, TypeScript, Vite, styled-components, Zod (валидация
