@@ -36,8 +36,32 @@ const COMPARATOR_SPECS: Array<{ phrases: string[]; op: NumericFilter["op"] }> = 
 
 const NUMBER_WITH_SUFFIX = /(\d+(?:[.,]\d+)?)\s*(млн|тыс)?/iu;
 
+// Connector words that can follow a level word without turning the query into a literal name
+// search, e.g. "команды с бюджетом больше 5 млн" — "с" here is filler, not part of a node name.
+const FILLER_WORDS = new Set(["с", "со", "и", "по", "все", "всех", "для", "на"]);
+
 function containsStem(text: string, stem: string): boolean {
   return new RegExp(`${stem}[а-яёa-z]*`, "iu").test(text);
+}
+
+/** Finds a level stem and reports what's left of the query once that word is removed. */
+function matchLevel(query: string): { level: number; remainder: string } | null {
+  for (const { stem, level } of LEVEL_STEMS) {
+    const match = new RegExp(`${stem}[а-яёa-z]*`, "iu").exec(query);
+    if (match) {
+      const remainder = `${query.slice(0, match.index)} ${query.slice(match.index + match[0].length)}`.trim();
+      return { level, remainder };
+    }
+  }
+  return null;
+}
+
+/** True if there's meaningful text left beyond the level word and generic connectors. */
+function hasMeaningfulRemainder(remainder: string): boolean {
+  return remainder
+    .split(/\s+/)
+    .filter(Boolean)
+    .some((word) => !FILLER_WORDS.has(word));
 }
 
 function findComparatorOp(text: string): NumericFilter["op"] | null {
@@ -72,13 +96,12 @@ export function parseNaturalLanguageQuery(rawQuery: string): StructuredFilter | 
 
   const filter: StructuredFilter = {};
   let matched = false;
+  let metricMatched = false;
 
-  for (const { stem, level } of LEVEL_STEMS) {
-    if (containsStem(query, stem)) {
-      filter.level = level;
-      matched = true;
-      break;
-    }
+  const levelMatch = matchLevel(query);
+  if (levelMatch) {
+    filter.level = levelMatch.level;
+    matched = true;
   }
 
   for (const spec of METRIC_SPECS) {
@@ -88,9 +111,17 @@ export function parseNaturalLanguageQuery(rawQuery: string): StructuredFilter | 
       if (op && value !== null) {
         filter[spec.field] = { op, value };
         matched = true;
+        metricMatched = true;
       }
       break;
     }
+  }
+
+  // A level word alone with extra, non-filler text and no metric constraint is almost certainly
+  // a literal node name ("Команда автотестов"), not a structured query — let plain-text search
+  // handle it instead of silently dropping the rest of what the user typed.
+  if (levelMatch && !metricMatched && hasMeaningfulRemainder(levelMatch.remainder)) {
+    return null;
   }
 
   return matched ? filter : null;

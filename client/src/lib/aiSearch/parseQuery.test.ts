@@ -27,6 +27,17 @@ describe("parseNaturalLanguageQuery", () => {
     expect(parseNaturalLanguageQuery("маркетинг")).toBeNull();
     expect(parseNaturalLanguageQuery("")).toBeNull();
   });
+
+  it("does not swallow a literal node name that happens to start with a level word", () => {
+    // "Команда автотестов" is an actual team name — should fall back to plain text search,
+    // not silently become a bare "level: 3" filter that drops "автотестов" entirely.
+    expect(parseNaturalLanguageQuery("команда автотестов")).toBeNull();
+    expect(parseNaturalLanguageQuery("отдел QA")).toBeNull();
+  });
+
+  it("still recognizes a level word alone (no extra text) as a level filter", () => {
+    expect(parseNaturalLanguageQuery("команды")).toEqual({ level: 3 });
+  });
 });
 
 describe("matchesStructuredFilter", () => {
